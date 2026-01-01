@@ -1,16 +1,17 @@
 
 import React from 'react';
-import { ProductInput, ContractLength, ProductCategory, CatalogItem } from '../types';
+import { ProductInput, ContractLength, ProductCategory, CatalogItem, Language } from '../types';
 
 interface ProductRowProps {
   product: ProductInput;
   catalog: CatalogItem[];
+  language: Language;
   onChange: (updated: ProductInput) => void;
   onRemove: () => void;
   isOnlyOne: boolean;
 }
 
-const ProductRow: React.FC<ProductRowProps> = ({ product, catalog, onChange, onRemove, isOnlyOne }) => {
+const ProductRow: React.FC<ProductRowProps> = ({ product, catalog, language, onChange, onRemove, isOnlyOne }) => {
   const filteredProducts = catalog.filter(p => p.category === product.category);
   const selectedProductInfo = catalog.find(p => p.name === product.name);
 
@@ -22,6 +23,20 @@ const ProductRow: React.FC<ProductRowProps> = ({ product, catalog, onChange, onR
       return [ContractLength.MONTHS_36, ContractLength.MONTHS_60];
     }
     return [ContractLength.MONTHS_60];
+  };
+
+  const getContractLabel = (val: ContractLength) => {
+    const isCN = language === Language.CN;
+    switch (val) {
+      case ContractLength.MONTHS_36:
+        return isCN ? '3年 (36期)' : '3 Years (36mo)';
+      case ContractLength.MONTHS_60:
+        return isCN ? '5年 (60期)' : '5 Years (60mo)';
+      case ContractLength.MONTHS_84:
+        return isCN ? '7年 (84期)' : '7 Years (84mo)';
+      default:
+        return val;
+    }
   };
 
   const supportedPlans = selectedProductInfo?.supportedPlans || getAllowedPlans(product.category);
@@ -113,7 +128,7 @@ const ProductRow: React.FC<ProductRowProps> = ({ product, catalog, onChange, onR
             className="w-full bg-rose-50 border-2 border-rose-100 px-4 py-4 rounded-2xl focus:ring-4 focus:ring-rose-500/20 outline-none text-base font-black text-rose-700 disabled:opacity-50 appearance-none"
           >
             {supportedPlans.map((plan, i) => (
-              <option key={i} value={plan}>{plan}</option>
+              <option key={i} value={plan}>{getContractLabel(plan)}</option>
             ))}
           </select>
         </div>

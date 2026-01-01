@@ -203,7 +203,7 @@ const App: React.FC = () => {
                 <button onClick={() => setOrderData({...orderData, customerType: CustomerType.EXISTING})} className={`flex-1 py-4 rounded-2xl text-sm font-black uppercase tracking-widest transition-all ${orderData.customerType === CustomerType.EXISTING ? 'bg-white text-rose-700 shadow-md' : 'text-slate-400'}`}>{t('Existing', '老顾客')}</button>
               </div>
               <div className="flex items-center justify-between bg-slate-50 p-6 rounded-3xl border-2 border-slate-100">
-                 <span className="text-sm font-black text-slate-500 uppercase tracking-widest">{t('10% Buyout Discount', '10% 买断优惠')}</span>
+                 <span className="text-sm font-black text-slate-500 uppercase tracking-widest">{t('Early Settlement Discount', '提前结算优惠')}</span>
                  <div className="relative inline-flex items-center cursor-pointer">
                    <input type="checkbox" checked={orderData.wantsFullSettlement} onChange={(e) => setOrderData({...orderData, wantsFullSettlement: e.target.checked})} className="sr-only peer" />
                    <div className="w-14 h-8 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-rose-600"></div>
@@ -214,7 +214,15 @@ const App: React.FC = () => {
             <div className="space-y-4">
               <label className="block text-xs font-black text-slate-400 uppercase tracking-[0.2em] px-4">{t('Product Selection', '选择下单产品')}</label>
               {orderData.products.map((p, idx) => (
-                <ProductRow key={idx} product={p} catalog={catalog} onChange={(u) => {const n=[...orderData.products]; n[idx]=u; setOrderData({...orderData, products:n});}} onRemove={() => setOrderData({...orderData, products: orderData.products.filter((_,i)=>i!==idx)})} isOnlyOne={orderData.products.length===1} />
+                <ProductRow 
+                  key={idx} 
+                  product={p} 
+                  catalog={catalog} 
+                  language={orderData.language}
+                  onChange={(u) => {const n=[...orderData.products]; n[idx]=u; setOrderData({...orderData, products:n});}} 
+                  onRemove={() => setOrderData({...orderData, products: orderData.products.filter((_,i)=>i!==idx)})} 
+                  isOnlyOne={orderData.products.length===1} 
+                />
               ))}
               <button onClick={() => setOrderData({...orderData, products: [...orderData.products, {category:'', name:'', model:'', quantity:1, contract: ContractLength.MONTHS_60}]})} className="w-full py-8 border-4 border-dashed border-slate-100 rounded-[2.5rem] text-sm font-black uppercase text-slate-400 hover:border-rose-400 hover:text-rose-600 active:scale-[0.98] transition-all">
                 + {t('Add More Items', '继续添加产品')}
@@ -266,12 +274,13 @@ const App: React.FC = () => {
                 )}
                 <div className="space-y-10 pb-12 whitespace-pre-wrap">
                    {displayResult.split('\n').map((line, i) => {
-                      if (line.includes('[DASHBOARD]') || line.includes('[CALCULATION BREAKDOWN]') || line.includes('[WHY]') || line.includes('[PITCH]')) {
+                      if (line.includes('[DASHBOARD]') || line.includes('[CALCULATION BREAKDOWN]') || line.includes('[WHY]') || line.includes('[PITCH]') || line.includes('[STRATEGY NOTE]')) {
                          const tag = line.replace(/[\[\]]/g, '');
+                         const isStrategy = tag === 'STRATEGY NOTE';
                          return (
                            <div key={i} className="flex items-center gap-4 mt-12 first:mt-0">
                              <div className="h-0.5 flex-1 bg-slate-200"></div>
-                             <h4 className="text-xs font-black uppercase tracking-[0.2em] text-rose-600/50 bg-rose-50 px-4 py-2 rounded-lg">{tag}</h4>
+                             <h4 className={`text-xs font-black uppercase tracking-[0.2em] px-4 py-2 rounded-lg ${isStrategy ? 'text-white bg-amber-500' : 'text-rose-600/50 bg-rose-50'}`}>{tag}</h4>
                              <div className="h-0.5 flex-1 bg-slate-200"></div>
                            </div>
                          );
