@@ -4,7 +4,29 @@ import { CustomerType, PlanType, ContractLength, OrderData, ProductInput, FileDa
 import { analyzeDeal } from './services/geminiService';
 import ProductRow from './components/ProductRow';
 
-const SYSTEM_DEFAULTS: SystemConfig | null = null; 
+// 这里是您的“大师级资料库”，更新代码即可同步给所有代理
+const SYSTEM_DEFAULTS: SystemConfig = {
+  catalog: DEFAULT_CATALOG,
+  masterKnowledge: `
+    LG SUBSCRIBE 核心销售策略 (2024/2025):
+    
+    1. 【RM88 Picks 促销专项规则】：
+       - 洗衣机 & 烘干机 (Laundry): 当代理遇到 RM88 活动时，必须提醒客户选择原价最贵的型号。因为促销价固定，选越贵的型号，节省金额(Saving)越大。
+       - 冰箱 (Fridge): 必须优先推荐 Regular Visit 12M 的配套。
+    
+    2. 【微波炉配套限制】：
+       - Microwave 仅支持 3年(36期) 和 5年(60期) 配套。
+    
+    3. 【提前结算优惠 (Early Settlement Discount)】：
+       - 如果客户选择提前结清，通常可享受剩余租金约 10% 的折扣。
+    
+    4. 【产品组合建议】：
+       - 净水器(WP) + 空气净化器(AP) 组合下单通常有额外 RM10-15 的月租减免。
+  `,
+  memos: [
+    // 您可以在这里预置一些官方促销文档的 Base64 数据（如果需要的话）
+  ]
+}; 
 
 const DB_NAME = 'LG_Sales_DB';
 const STORE_NAME = 'memos';
@@ -70,15 +92,20 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const init = async () => {
-      let initialCatalog = SYSTEM_DEFAULTS?.catalog || DEFAULT_CATALOG;
-      let initialRules = SYSTEM_DEFAULTS?.masterKnowledge || '';
-      let initialMemos: FileData[] = (SYSTEM_DEFAULTS?.memos || []).map(m => ({ ...m, isSystem: true }));
+      // 始终优先加载 SYSTEM_DEFAULTS 中的“官方规则”
+      let initialCatalog = SYSTEM_DEFAULTS.catalog;
+      let initialRules = SYSTEM_DEFAULTS.masterKnowledge;
+      let initialMemos: FileData[] = (SYSTEM_DEFAULTS.memos || []).map(m => ({ ...m, isSystem: true }));
 
+      // 检查是否有本地个人修改
       const savedCatalog = localStorage.getItem('lg_custom_catalog');
       const savedRules = localStorage.getItem('lg_master_rules');
       
       if (savedCatalog) { try { initialCatalog = JSON.parse(savedCatalog); } catch (e) {} }
-      if (savedRules) initialRules = savedRules;
+      // 如果本地没有保存过规则，或者您更新了系统规则版本，则使用系统规则
+      if (savedRules) {
+        initialRules = savedRules; 
+      }
       
       try {
         const userMemos = await loadMemosFromDB();
@@ -93,6 +120,15 @@ const App: React.FC = () => {
     };
     init();
   }, []);
+
+  const resetToSystemDefaults = () => {
+    if (window.confirm('确定要恢复到官方系统默认设置吗？这将清除您的自定义修改。')) {
+      localStorage.removeItem('lg_custom_catalog');
+      localStorage.removeItem('lg_master_rules');
+      saveMemosToDB([]);
+      window.location.reload();
+    }
+  };
 
   const updateMemosStateAndStorage = async (memos: FileData[]) => {
     setActiveMemos(memos);
@@ -204,10 +240,10 @@ const App: React.FC = () => {
               </div>
               <div className="flex items-center justify-between bg-slate-50 p-6 rounded-3xl border-2 border-slate-100">
                  <span className="text-sm font-black text-slate-500 uppercase tracking-widest">{t('Early Settlement Discount', '提前结算优惠')}</span>
-                 <div className="relative inline-flex items-center cursor-pointer">
+                 <label className="relative inline-flex items-center cursor-pointer">
                    <input type="checkbox" checked={orderData.wantsFullSettlement} onChange={(e) => setOrderData({...orderData, wantsFullSettlement: e.target.checked})} className="sr-only peer" />
                    <div className="w-14 h-8 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-rose-600"></div>
-                 </div>
+                 </label>
               </div>
             </div>
 
@@ -298,7 +334,10 @@ const App: React.FC = () => {
           <div className="bg-white w-full max-w-4xl h-[90vh] rounded-[3rem] shadow-2xl flex flex-col overflow-hidden">
              <div className="p-8 border-b flex items-center justify-between bg-slate-50">
                 <h3 className="text-xl font-black uppercase tracking-tight">{t('Admin / 系统', '后台管理')}</h3>
-                <button onClick={() => setShowSettings(false)} className="w-12 h-12 bg-slate-200 rounded-full flex items-center justify-center text-2xl hover:bg-rose-500 hover:text-white transition-all transform hover:rotate-90">✕</button>
+                <div className="flex gap-4">
+                  <button onClick={resetToSystemDefaults} className="px-4 py-2 bg-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase hover:bg-rose-100 hover:text-rose-600 transition-all">重置为官方默认</button>
+                  <button onClick={() => setShowSettings(false)} className="w-12 h-12 bg-slate-200 rounded-full flex items-center justify-center text-2xl hover:bg-rose-500 hover:text-white transition-all transform hover:rotate-90">✕</button>
+                </div>
              </div>
              
              <div className="flex bg-slate-100 p-3 m-6 rounded-3xl overflow-x-auto no-scrollbar">
@@ -326,6 +365,9 @@ const App: React.FC = () => {
                 )}
                 {settingsTab === 'rules' && (
                   <div className="h-full flex flex-col">
+                    <div className="mb-4 p-4 bg-rose-50 text-rose-700 rounded-2xl text-xs font-bold border border-rose-100">
+                      💡 提示：这是 AI 的计算大脑。您在这里输入的任何策略（如 RM88 规则）都会直接影响生成的方案。
+                    </div>
                     <textarea value={masterKnowledge} onChange={(e) => saveMasterRules(e.target.value)} className="w-full flex-1 p-8 bg-slate-50 rounded-[2rem] text-lg font-bold border-2 border-slate-100 outline-none shadow-inner resize-none" placeholder="Master Logic rules..." />
                   </div>
                 )}
@@ -349,9 +391,9 @@ const App: React.FC = () => {
                               <div key={i} className="p-5 rounded-2xl flex items-center justify-between border-2 border-white/10 bg-white/5">
                                 <div className="flex items-center gap-4">
                                   <div className={`w-3 h-3 rounded-full ${m.isSystem ? 'bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.8)]' : 'bg-slate-500'}`}></div>
-                                  <span className="text-base font-bold truncate max-w-[200px]">{m.name}</span>
+                                  <span className="text-base font-bold truncate max-w-[200px]">{m.name} {m.isSystem && '(官方)'}</span>
                                 </div>
-                                <button onClick={() => removeMemo(i)} className="text-rose-500 text-2xl p-2">✕</button>
+                                {!m.isSystem && <button onClick={() => removeMemo(i)} className="text-rose-500 text-2xl p-2">✕</button>}
                               </div>
                             ))}
                         </div>
