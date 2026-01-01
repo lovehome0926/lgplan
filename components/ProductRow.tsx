@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ProductInput, ContractLength, ProductCategory, CatalogItem, Language } from '../types';
 
 interface ProductRowProps {
@@ -20,7 +20,6 @@ const ProductRow: React.FC<ProductRowProps> = ({ product, catalog, language, onC
       return [ContractLength.MONTHS_60, ContractLength.MONTHS_84];
     }
     if (category === ProductCategory.MICROWAVE) {
-      // Return 60 months first as requested
       return [ContractLength.MONTHS_60, ContractLength.MONTHS_36];
     }
     return [ContractLength.MONTHS_60];
@@ -40,14 +39,23 @@ const ProductRow: React.FC<ProductRowProps> = ({ product, catalog, language, onC
     }
   };
 
+  // Determine available plans
   const supportedPlans = selectedProductInfo?.supportedPlans?.length 
-    ? [...selectedProductInfo.supportedPlans].sort((a, b) => b === ContractLength.MONTHS_60 ? 1 : -1) // Sort to put 60 in good position or follow business logic
+    ? [...selectedProductInfo.supportedPlans].sort((a, b) => b === ContractLength.MONTHS_60 ? 1 : -1)
     : getAllowedPlans(product.category);
 
-  // Special override for Microwave to ensure 60 is visible and prioritized
+  // Special override for Microwave
   const finalSupportedPlans = product.category === ProductCategory.MICROWAVE 
     ? [ContractLength.MONTHS_60, ContractLength.MONTHS_36] 
     : supportedPlans;
+
+  // CRITICAL: Ensure the current selected contract is actually one of the supported plans.
+  // If not, reset it to a valid default. This prevents the "unable to change" bug.
+  useEffect(() => {
+    if (product.name && !finalSupportedPlans.includes(product.contract)) {
+      onChange({ ...product, contract: finalSupportedPlans[0] });
+    }
+  }, [product.name, product.category, finalSupportedPlans, product.contract, onChange]);
 
   return (
     <div className="relative p-6 bg-white rounded-3xl border-2 border-slate-100 mb-6 shadow-sm flex flex-col gap-5 transition-all active:scale-[0.99]">
@@ -74,7 +82,7 @@ const ProductRow: React.FC<ProductRowProps> = ({ product, catalog, language, onC
                 category: newCat,
                 name: firstInCategory?.name || '',
                 model: firstInCategory?.models[0] || '',
-                contract: allowed[0] // Microwave will pick 60m because it's first in allowed array
+                contract: allowed[0] 
               });
             }}
             className="w-full bg-slate-50 px-4 py-4 border-2 border-slate-100 rounded-2xl focus:ring-4 focus:ring-rose-500/20 outline-none text-base font-bold text-slate-700 appearance-none"
@@ -91,13 +99,16 @@ const ProductRow: React.FC<ProductRowProps> = ({ product, catalog, language, onC
           <select
             value={product.name}
             onChange={(e) => {
-              const found = catalog.find(p => p.name === e.target.value);
+              const foundName = e.target.value;
+              const found = catalog.find(p => p.name === foundName);
               const allowed = getAllowedPlans(product.category);
+              const nextSupported = found?.supportedPlans?.length ? found.supportedPlans : allowed;
+              
               onChange({ 
                 ...product, 
-                name: e.target.value,
+                name: foundName,
                 model: found?.models[0] || '',
-                contract: found?.supportedPlans?.includes(ContractLength.MONTHS_60) ? ContractLength.MONTHS_60 : (found?.supportedPlans[0] || allowed[0])
+                contract: nextSupported.includes(ContractLength.MONTHS_60) ? ContractLength.MONTHS_60 : nextSupported[0]
               });
             }}
             disabled={!product.category}

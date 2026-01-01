@@ -1,29 +1,36 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CustomerType, PlanType, ContractLength, OrderData, ProductInput, FileData, Language, ProductCategory, CatalogItem, DEFAULT_CATALOG, SystemConfig } from './types';
 import { analyzeDealStream } from './services/geminiService';
 import ProductRow from './components/ProductRow';
 
-// 这里是您的“大师级资料库”，更新代码即可同步给所有代理
+/**
+ * 核心系统默认配置 (一进来就看到的资料)
+ */
 const SYSTEM_DEFAULTS: SystemConfig = {
   catalog: DEFAULT_CATALOG,
   masterKnowledge: `
-    LG SUBSCRIBE 核心销售策略 (2024/2025):
+    LG SUBSCRIBE 销售大师核心规则 (2024/2025 最新版):
     
-    1. 【RM88 Picks 促销专项规则】：
-       - 洗衣机 & 烘干机 (Laundry): 当代理遇到 RM88 活动时，必须提醒客户选择原价最贵的型号。因为促销价固定，选越贵的型号，节省金额(Saving)越大。
-       - 冰箱 (Fridge): 必须优先推荐 Regular Visit 12M 的配套。
+    1. 【RM88 Picks 专项策略】：
+       - 洗衣机 & 烘干机 (Washer/Dryer): 促销价统一为 RM88。必须引导客户选购目录中最昂贵、最高端的型号（如 V5 系列），因为型号越贵，客户省下的钱越多。
+       - 冰箱 (Fridge): 强烈推荐 "Regular Visit 12M" 方案，这是最平衡的维护选择。
     
-    2. 【微波炉配套限制】：
-       - Microwave 仅支持 3年(36期) 和 5年(60期) 配套。默认推荐 60个月以获得更低月租。
+    2. 【微波炉 (Microwave) 特殊限制】：
+       - 微波炉仅支持 5年(60个月) 和 3年(36个月) 方案。
+       - 默认必须优先推荐 5年(60个月)，月租金更低且更具竞争力。
     
-    3. 【提前结算优惠 (Early Settlement Discount)】：
-       - 如果客户选择提前结清，通常可享受剩余租金约 10% 的折扣。
+    3. 【提前结算优惠 (Early Settlement)】：
+       - 勾选此项表示客户愿意一次性买断剩余租期。
+       - 规则：通常可基于剩余租金总额申请约 10% 的减免优惠。
     
-    4. 【产品组合建议】：
-       - 净水器(WP) + 空气净化器(AP) 组合下单通常有额外 RM10-15 的月租减免。
+    4. 【产品捆绑方案】：
+       - 组合购买（如 WP + AP）时，应计算组合月租减免（通常比单买省 RM10-15/月）。
+    
+    5. 【老顾客优惠 (Existing Customer)】：
+       - 老顾客再次下单可享受处理费减免或额外的月租扣减。
   `,
-  memos: []
+  memos: [] 
 }; 
 
 const DB_NAME = 'LG_Sales_DB';
@@ -70,7 +77,10 @@ const App: React.FC = () => {
   const [masterKnowledge, setMasterKnowledge] = useState<string>('');
   const [settingsTab, setSettingsTab] = useState<'catalog' | 'rules' | 'memos' | 'sync'>('catalog');
   const [showSettings, setShowSettings] = useState(false);
-  
+  const [showSecretMenu, setShowSecretMenu] = useState(false);
+  const logoClickCount = useRef(0);
+  const logoClickTimer = useRef<any>(null);
+
   const [orderData, setOrderData] = useState<OrderData>({
     customerType: CustomerType.NEW,
     products: [{ category: '', name: '', model: '', quantity: 1, contract: ContractLength.MONTHS_60 }],
@@ -87,6 +97,7 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string>('');
   const [statusMsg, setStatusMsg] = useState<string>('');
+  const [syncInput, setSyncInput] = useState('');
 
   useEffect(() => {
     const init = async () => {
@@ -114,12 +125,40 @@ const App: React.FC = () => {
     init();
   }, []);
 
+  const handleLogoClick = () => {
+    logoClickCount.current++;
+    if (logoClickTimer.current) clearTimeout(logoClickTimer.current);
+    
+    logoClickTimer.current = setTimeout(() => {
+      logoClickCount.current = 0;
+    }, 1000);
+
+    if (logoClickCount.current === 5) {
+      setShowSecretMenu(true);
+      logoClickCount.current = 0;
+      showStatus('Admin Mode Unlocked');
+    }
+  };
+
   const resetToSystemDefaults = () => {
-    if (window.confirm('确定要恢复到官方系统默认设置吗？')) {
+    if (window.confirm('确定要恢复到官方系统默认设置吗？这将同步代码中最新的策略资料。')) {
       localStorage.removeItem('lg_custom_catalog');
       localStorage.removeItem('lg_master_rules');
       saveMemosToDB([]);
       window.location.reload();
+    }
+  };
+
+  const applySyncCode = async (code: string) => {
+    try {
+      const config = JSON.parse(code);
+      if (config.catalog) saveCatalog(config.catalog);
+      if (config.masterKnowledge) saveMasterRules(config.masterKnowledge);
+      if (config.activeMemos) await updateMemosStateAndStorage(config.activeMemos);
+      showStatus('Sync Applied Successfully!');
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (e) {
+      showStatus('Invalid Sync Code');
     }
   };
 
@@ -144,9 +183,13 @@ const App: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `LG_AI_Config_${new Date().toISOString().slice(0,10)}.json`;
+    a.download = `LG_AI_MasterConfig_${new Date().toISOString().slice(0,10)}.json`;
     a.click();
     showStatus('Exported!');
+  };
+
+  const getMasterPayload = () => {
+    return JSON.stringify({ catalog, masterKnowledge, activeMemos });
   };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -159,7 +202,7 @@ const App: React.FC = () => {
       if (config.masterKnowledge) saveMasterRules(config.masterKnowledge);
       if (config.activeMemos) await updateMemosStateAndStorage(config.activeMemos);
       showStatus('Import Success!');
-      setTimeout(() => window.location.reload(), 1000);
+      setTimeout(() => window.location.reload(), 500);
     } catch (err) {
       showStatus('Invalid File');
     }
@@ -214,7 +257,7 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20">
       <header className="bg-rose-700 text-white py-5 px-6 sticky top-0 z-[60] flex items-center justify-between shadow-lg">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 cursor-pointer select-none active:opacity-70" onClick={handleLogoClick}>
           <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-rose-700 font-black text-lg shadow-inner">LG</div>
           <h1 className="text-lg font-black uppercase tracking-tight">{t('Sales Assistant', '销售智助')}</h1>
         </div>
@@ -249,7 +292,11 @@ const App: React.FC = () => {
                   product={p} 
                   catalog={catalog} 
                   language={orderData.language}
-                  onChange={(u) => {const n=[...orderData.products]; n[idx]=u; setOrderData({...orderData, products:n});}} 
+                  onChange={(u) => {
+                    const n=[...orderData.products]; 
+                    n[idx]=u; 
+                    setOrderData({...orderData, products:n});
+                  }} 
                   onRemove={() => setOrderData({...orderData, products: orderData.products.filter((_,i)=>i!==idx)})} 
                   isOnlyOne={orderData.products.length===1} 
                 />
@@ -394,15 +441,37 @@ const App: React.FC = () => {
                 )}
                 {settingsTab === 'sync' && (
                   <div className="grid grid-cols-1 gap-6">
-                    <button onClick={handleExport} className="w-full py-8 bg-slate-900 text-white rounded-[2rem] font-black uppercase tracking-widest text-lg shadow-xl active:scale-95 transition-all">Export JSON Config</button>
+                    <button onClick={handleExport} className="w-full py-8 bg-slate-900 text-white rounded-[2rem] font-black uppercase tracking-widest text-lg shadow-xl active:scale-95 transition-all">Export Master Config</button>
                     <label className="w-full py-8 bg-white border-4 border-dashed border-slate-200 text-center rounded-[2rem] font-black uppercase tracking-widest text-lg cursor-pointer hover:bg-slate-50 active:scale-95 transition-all block">
-                      Import JSON Config
+                      Import Master Config
                       <input type="file" accept=".json" className="hidden" onChange={handleImport} />
                     </label>
                   </div>
                 )}
              </div>
           </div>
+        </div>
+      )}
+
+      {showSecretMenu && (
+        <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-3xl flex items-center justify-center p-6">
+           <div className="bg-slate-900 border-2 border-white/10 w-full max-w-2xl rounded-[3rem] p-10 text-white shadow-2xl">
+              <div className="flex justify-between items-center mb-8">
+                 <h2 className="text-3xl font-black tracking-tighter uppercase italic">LG <span className="text-rose-600">Master Sync</span></h2>
+                 <button onClick={() => setShowSecretMenu(false)} className="text-2xl opacity-50 hover:opacity-100 transition-all">✕</button>
+              </div>
+              <p className="text-slate-400 mb-6 text-sm font-bold uppercase tracking-widest">Master Payload (复制此代码发给 AI 以更新系统默认):</p>
+              <textarea readOnly value={getMasterPayload()} className="w-full h-32 bg-black border border-white/5 rounded-2xl p-4 text-[10px] font-mono text-emerald-500 mb-8 overflow-auto cursor-pointer active:scale-[0.98] transition-all" onClick={(e) => { (e.target as HTMLTextAreaElement).select(); navigator.clipboard.writeText(getMasterPayload()); showStatus('Payload Copied'); }} />
+              
+              <p className="text-slate-400 mb-4 text-sm font-bold uppercase tracking-widest">Apply Sync Code (粘贴代码以在所有手机同步资料):</p>
+              <div className="flex gap-4">
+                <input type="text" value={syncInput} onChange={(e) => setSyncInput(e.target.value)} placeholder="Paste JSON Payload here..." className="flex-1 bg-black border border-white/10 rounded-2xl px-6 py-4 text-sm font-mono focus:border-rose-600 outline-none" />
+                <button onClick={() => applySyncCode(syncInput)} className="bg-rose-600 px-8 py-4 rounded-2xl text-xs font-black uppercase hover:bg-rose-500 active:scale-95 transition-all">Sync</button>
+              </div>
+              <div className="mt-8 p-6 bg-white/5 rounded-2xl border border-white/5">
+                <p className="text-xs text-slate-500 leading-relaxed font-bold">⚠️ 注意：同步操作会覆盖当前设备上的所有自定义设置。若要让所有代理都能看到，请将 Master Payload 发送给 AI 工程师进行代码更新。</p>
+              </div>
+           </div>
         </div>
       )}
 
