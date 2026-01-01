@@ -4,15 +4,16 @@ import { OrderData, FileData, Language } from "../types";
 
 const MODEL_NAME = 'gemini-3-flash-preview';
 
-export const analyzeDeal = async (
+export const analyzeDealStream = async (
   orderData: OrderData, 
   masterKnowledge: string,
-  memoFiles: FileData[] = []
-): Promise<string> => {
+  memoFiles: FileData[] = [],
+  onChunk: (text: string) => void
+): Promise<void> => {
   const apiKey = process.env.API_KEY;
   
   if (!apiKey || apiKey === "undefined" || apiKey === "") {
-    console.error("Gemini Service: API_KEY is missing. Check your environment variables.");
+    console.error("Gemini Service: API_KEY is missing.");
     throw new Error("API_KEY_MISSING");
   }
 
@@ -21,7 +22,7 @@ export const analyzeDeal = async (
   const systemInstruction = `
     You are the "LG Subscribe Senior Pricing Actuary". Your role is to calculate the absolute lowest price and present the most strategic plan.
 
-    STRICT OUTPUT FORMAT (DO NOT ADD ANY INTRO OR OUTRO):
+    STRICT OUTPUT FORMAT:
     [SAVED_AMOUNT]: RM [Insert calculated total savings amount here]
     
     💰 [DASHBOARD]
@@ -46,14 +47,12 @@ export const analyzeDeal = async (
 
     CAMPAIGN RULES:
     1. RM88 Picks Campaign:
-       - For Washer & Dryer (Laundry): ALWAYS remind the agent to select models with higher "Regular Visit" prices. Since the promo is a flat rate, choosing the more expensive base model provides higher value.
-       - For Refrigerators (Fridge): ALWAYS prioritize and recommend "Regular Visit 12M" packages.
+       - For Washer & Dryer: Remind the agent to select expensive models because promo price is flat RM88.
+       - For Refrigerators: Recommend "Regular Visit 12M".
     
     GENERAL RULES:
     - ALWAYS start with [SAVED_AMOUNT].
     - NO polite filler. 
-    - If a price is missing, use Master Rules or standard market pricing.
-    - If multiple promos conflict, use the one that saves the customer the MOST money.
     - LANGUAGE: ${orderData.language === Language.CN ? 'Chinese' : 'English'}.
   `;
 
@@ -82,7 +81,7 @@ export const analyzeDeal = async (
   }
 
   try {
-    const response: GenerateContentResponse = await ai.models.generateContent({
+    const responseStream = await ai.models.generateContentStream({
       model: MODEL_NAME,
       contents: [{ parts }],
       config: { 
@@ -91,11 +90,14 @@ export const analyzeDeal = async (
       }
     });
 
-    if (!response.text) {
-      throw new Error("EMPTY_RESPONSE");
+    let fullText = "";
+    for await (const chunk of responseStream) {
+      const text = chunk.text;
+      if (text) {
+        fullText += text;
+        onChunk(fullText);
+      }
     }
-
-    return response.text;
   } catch (error: any) {
     console.error("Gemini API Error Detail:", error);
     throw error;

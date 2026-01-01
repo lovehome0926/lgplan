@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { CustomerType, PlanType, ContractLength, OrderData, ProductInput, FileData, Language, ProductCategory, CatalogItem, DEFAULT_CATALOG, SystemConfig } from './types';
-import { analyzeDeal } from './services/geminiService';
+import { analyzeDealStream } from './services/geminiService';
 import ProductRow from './components/ProductRow';
 
 // 这里是您的“大师级资料库”，更新代码即可同步给所有代理
@@ -15,7 +15,7 @@ const SYSTEM_DEFAULTS: SystemConfig = {
        - 冰箱 (Fridge): 必须优先推荐 Regular Visit 12M 的配套。
     
     2. 【微波炉配套限制】：
-       - Microwave 仅支持 3年(36期) 和 5年(60期) 配套。
+       - Microwave 仅支持 3年(36期) 和 5年(60期) 配套。默认推荐 60个月以获得更低月租。
     
     3. 【提前结算优惠 (Early Settlement Discount)】：
        - 如果客户选择提前结清，通常可享受剩余租金约 10% 的折扣。
@@ -23,9 +23,7 @@ const SYSTEM_DEFAULTS: SystemConfig = {
     4. 【产品组合建议】：
        - 净水器(WP) + 空气净化器(AP) 组合下单通常有额外 RM10-15 的月租减免。
   `,
-  memos: [
-    // 您可以在这里预置一些官方促销文档的 Base64 数据（如果需要的话）
-  ]
+  memos: []
 }; 
 
 const DB_NAME = 'LG_Sales_DB';
@@ -92,20 +90,15 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const init = async () => {
-      // 始终优先加载 SYSTEM_DEFAULTS 中的“官方规则”
       let initialCatalog = SYSTEM_DEFAULTS.catalog;
       let initialRules = SYSTEM_DEFAULTS.masterKnowledge;
       let initialMemos: FileData[] = (SYSTEM_DEFAULTS.memos || []).map(m => ({ ...m, isSystem: true }));
 
-      // 检查是否有本地个人修改
       const savedCatalog = localStorage.getItem('lg_custom_catalog');
       const savedRules = localStorage.getItem('lg_master_rules');
       
       if (savedCatalog) { try { initialCatalog = JSON.parse(savedCatalog); } catch (e) {} }
-      // 如果本地没有保存过规则，或者您更新了系统规则版本，则使用系统规则
-      if (savedRules) {
-        initialRules = savedRules; 
-      }
+      if (savedRules) { initialRules = savedRules; }
       
       try {
         const userMemos = await loadMemosFromDB();
@@ -122,7 +115,7 @@ const App: React.FC = () => {
   }, []);
 
   const resetToSystemDefaults = () => {
-    if (window.confirm('确定要恢复到官方系统默认设置吗？这将清除您的自定义修改。')) {
+    if (window.confirm('确定要恢复到官方系统默认设置吗？')) {
       localStorage.removeItem('lg_custom_catalog');
       localStorage.removeItem('lg_master_rules');
       saveMemosToDB([]);
@@ -183,8 +176,9 @@ const App: React.FC = () => {
     setLoading(true);
     setResult('');
     try {
-      const analysis = await analyzeDeal(orderData, masterKnowledge, activeMemos);
-      setResult(analysis);
+      await analyzeDealStream(orderData, masterKnowledge, activeMemos, (text) => {
+        setResult(text);
+      });
     } catch (err: any) {
       console.error("Analysis Error:", err);
       showStatus(t('Computing Error. Please try again.', '计算出错，请重试'));
@@ -214,7 +208,7 @@ const App: React.FC = () => {
   };
 
   const savingsMatch = result.match(/\[SAVED_AMOUNT\]:\s*(.*)/i);
-  const totalSavedValue = savingsMatch ? savingsMatch[1] : '';
+  const totalSavedValue = savingsMatch ? savingsMatch[1].split('\n')[0] : '';
   const displayResult = result.replace(/\[SAVED_AMOUNT\]:\s*(.*)/i, '').trim();
 
   return (
@@ -310,18 +304,19 @@ const App: React.FC = () => {
                 )}
                 <div className="space-y-10 pb-12 whitespace-pre-wrap">
                    {displayResult.split('\n').map((line, i) => {
-                      if (line.includes('[DASHBOARD]') || line.includes('[CALCULATION BREAKDOWN]') || line.includes('[WHY]') || line.includes('[PITCH]') || line.includes('[STRATEGY NOTE]')) {
-                         const tag = line.replace(/[\[\]]/g, '');
+                      if (line.startsWith('[') && line.includes(']')) {
+                         const tag = line.replace(/[\[\]]/g, '').trim();
                          const isStrategy = tag === 'STRATEGY NOTE';
+                         const isDashboard = tag === 'DASHBOARD';
                          return (
-                           <div key={i} className="flex items-center gap-4 mt-12 first:mt-0">
+                           <div key={i} className={`flex items-center gap-4 ${isDashboard ? 'mt-4' : 'mt-12'}`}>
                              <div className="h-0.5 flex-1 bg-slate-200"></div>
                              <h4 className={`text-xs font-black uppercase tracking-[0.2em] px-4 py-2 rounded-lg ${isStrategy ? 'text-white bg-amber-500' : 'text-rose-600/50 bg-rose-50'}`}>{tag}</h4>
                              <div className="h-0.5 flex-1 bg-slate-200"></div>
                            </div>
                          );
                       }
-                      return <p key={i} className="text-lg text-slate-700 leading-relaxed font-bold tracking-tight">{line}</p>;
+                      return line.trim() ? <p key={i} className="text-lg text-slate-700 leading-relaxed font-bold tracking-tight">{line}</p> : null;
                    })}
                 </div>
              </div>
@@ -365,9 +360,6 @@ const App: React.FC = () => {
                 )}
                 {settingsTab === 'rules' && (
                   <div className="h-full flex flex-col">
-                    <div className="mb-4 p-4 bg-rose-50 text-rose-700 rounded-2xl text-xs font-bold border border-rose-100">
-                      💡 提示：这是 AI 的计算大脑。您在这里输入的任何策略（如 RM88 规则）都会直接影响生成的方案。
-                    </div>
                     <textarea value={masterKnowledge} onChange={(e) => saveMasterRules(e.target.value)} className="w-full flex-1 p-8 bg-slate-50 rounded-[2rem] text-lg font-bold border-2 border-slate-100 outline-none shadow-inner resize-none" placeholder="Master Logic rules..." />
                   </div>
                 )}

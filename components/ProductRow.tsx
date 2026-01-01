@@ -20,7 +20,8 @@ const ProductRow: React.FC<ProductRowProps> = ({ product, catalog, language, onC
       return [ContractLength.MONTHS_60, ContractLength.MONTHS_84];
     }
     if (category === ProductCategory.MICROWAVE) {
-      return [ContractLength.MONTHS_36, ContractLength.MONTHS_60];
+      // Return 60 months first as requested
+      return [ContractLength.MONTHS_60, ContractLength.MONTHS_36];
     }
     return [ContractLength.MONTHS_60];
   };
@@ -39,7 +40,14 @@ const ProductRow: React.FC<ProductRowProps> = ({ product, catalog, language, onC
     }
   };
 
-  const supportedPlans = selectedProductInfo?.supportedPlans || getAllowedPlans(product.category);
+  const supportedPlans = selectedProductInfo?.supportedPlans?.length 
+    ? [...selectedProductInfo.supportedPlans].sort((a, b) => b === ContractLength.MONTHS_60 ? 1 : -1) // Sort to put 60 in good position or follow business logic
+    : getAllowedPlans(product.category);
+
+  // Special override for Microwave to ensure 60 is visible and prioritized
+  const finalSupportedPlans = product.category === ProductCategory.MICROWAVE 
+    ? [ContractLength.MONTHS_60, ContractLength.MONTHS_36] 
+    : supportedPlans;
 
   return (
     <div className="relative p-6 bg-white rounded-3xl border-2 border-slate-100 mb-6 shadow-sm flex flex-col gap-5 transition-all active:scale-[0.99]">
@@ -66,7 +74,7 @@ const ProductRow: React.FC<ProductRowProps> = ({ product, catalog, language, onC
                 category: newCat,
                 name: firstInCategory?.name || '',
                 model: firstInCategory?.models[0] || '',
-                contract: allowed[0]
+                contract: allowed[0] // Microwave will pick 60m because it's first in allowed array
               });
             }}
             className="w-full bg-slate-50 px-4 py-4 border-2 border-slate-100 rounded-2xl focus:ring-4 focus:ring-rose-500/20 outline-none text-base font-bold text-slate-700 appearance-none"
@@ -89,7 +97,7 @@ const ProductRow: React.FC<ProductRowProps> = ({ product, catalog, language, onC
                 ...product, 
                 name: e.target.value,
                 model: found?.models[0] || '',
-                contract: found?.supportedPlans[0] || allowed[0]
+                contract: found?.supportedPlans?.includes(ContractLength.MONTHS_60) ? ContractLength.MONTHS_60 : (found?.supportedPlans[0] || allowed[0])
               });
             }}
             disabled={!product.category}
@@ -127,7 +135,7 @@ const ProductRow: React.FC<ProductRowProps> = ({ product, catalog, language, onC
             disabled={!product.name}
             className="w-full bg-rose-50 border-2 border-rose-100 px-4 py-4 rounded-2xl focus:ring-4 focus:ring-rose-500/20 outline-none text-base font-black text-rose-700 disabled:opacity-50 appearance-none"
           >
-            {supportedPlans.map((plan, i) => (
+            {finalSupportedPlans.map((plan, i) => (
               <option key={i} value={plan}>{getContractLabel(plan)}</option>
             ))}
           </select>
