@@ -9,33 +9,55 @@ export const analyzeDeal = async (
   masterKnowledge: string,
   memoFiles: FileData[] = []
 ): Promise<string> => {
-  // 检查 API KEY
   const apiKey = process.env.API_KEY;
   
   if (!apiKey || apiKey === "undefined" || apiKey === "") {
-    console.error("Critical: API_KEY is missing during execution.");
+    console.error("Gemini Service: API_KEY is missing. Check your environment variables.");
     throw new Error("API_KEY_MISSING");
   }
 
   const ai = new GoogleGenAI({ apiKey });
 
   const systemInstruction = `
-    You are the "LG Subscribe Senior Pricing Actuary". Your goal is to provide 100% accurate pricing based EXCLUSIVELY on the provided LG Promo Memos and Master Rules.
+    You are the "LG Subscribe Senior Pricing Actuary". Your role is to calculate the absolute lowest price for a customer and present it clearly to a sales agent.
 
-    CRITICAL PRICING LOGIC:
-    1. EXTRACT prices from PDF.
-    2. APPLY bundle logic.
-    3. FINAL 10% discount only if Full Settlement is YES.
+    STRICT OUTPUT FORMAT (DO NOT ADD ANY INTRO OR OUTRO):
+    [SAVED_AMOUNT]: RM [Insert calculated total savings amount here]
+    
+    💰 [DASHBOARD]
+    - Original Total Cost: RM [Sum of standard prices]
+    - Optimized Total Cost: RM [Sum after all promos applied]
+    - Monthly Commitment: RM [Per month total]
+    - Total Saving: RM [Total saved over contract period]
+    
+    📊 [CALCULATION BREAKDOWN]
+    1. [Item Name]: [Original Price] -> [Promo Price] (Reason: [Mention Memo name])
+    2. [Bundle/Combo]: [Discount value] (Reason: [Mention Memo name])
+    3. [Settlement]: [If YES, subtract 10% from remaining balance]
+    
+    💡 [WHY]
+    - Concise bullet points explaining why this is the best deal.
+    
+    📢 [PITCH]
+    - A 2-sentence powerful sales pitch for the customer.
 
-    LANGUAGE: ${orderData.language === Language.CN ? 'Chinese' : 'English'}.
+    RULES:
+    - ALWAYS start with [SAVED_AMOUNT].
+    - NO "Hello", NO "Here is your calculation", NO "I hope this helps".
+    - If a price is not found in the Memos, use the Master Rules or standard market pricing.
+    - If multiple promos conflict, use the one that saves the customer the MOST money.
+    - LANGUAGE: ${orderData.language === Language.CN ? 'Chinese' : 'English'}.
   `;
 
   const prompt = `
     CUSTOMER ORDER DATA:
-    - Customer Status: ${orderData.customerType}
-    - Product Details: ${orderData.products.map(p => `${p.quantity}x ${p.name} [${p.model}] for ${p.contract}`).join('; ')}
-    - Full Settlement Requested: ${orderData.wantsFullSettlement ? 'YES' : 'NO'}
-    - Knowledge: ${masterKnowledge || "Standard LG pricing."}
+    - Status: ${orderData.customerType}
+    - Products: ${orderData.products.map(p => `${p.quantity}x ${p.name} [${p.model}] for ${p.contract}`).join('; ')}
+    - 10% Buyout Discount (Full Settlement): ${orderData.wantsFullSettlement ? 'YES' : 'NO'}
+    - Context: ${orderData.additionalContext || 'None'}
+
+    KNOWLEDGE:
+    - Rules: ${masterKnowledge || "Standard LG pricing."}
   `;
 
   const parts: any[] = [{ text: prompt }];
@@ -58,14 +80,16 @@ export const analyzeDeal = async (
       config: { 
         systemInstruction,
         temperature: 0,
-        thinkingConfig: { thinkingBudget: 0 }
       }
     });
 
-    return response.text || "No response from AI.";
+    if (!response.text) {
+      throw new Error("EMPTY_RESPONSE");
+    }
+
+    return response.text;
   } catch (error: any) {
-    console.error("Gemini API detailed error:", error);
-    // 抛出带有状态码的错误信息
-    throw new Error(error.message || "Unknown API Error");
+    console.error("Gemini API Error Detail:", error);
+    throw error;
   }
 };
