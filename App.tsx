@@ -51,7 +51,7 @@ const loadMemosFromDB = async (): Promise<FileData[]> => {
 const App: React.FC = () => {
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [masterKnowledge, setMasterKnowledge] = useState<string>('');
-  const [settingsTab, setSettingsTab] = useState<'catalog' | 'rules' | 'sync'>('catalog');
+  const [settingsTab, setSettingsTab] = useState<'catalog' | 'rules' | 'memos' | 'sync'>('catalog');
   const [showSettings, setShowSettings] = useState(false);
   
   const [orderData, setOrderData] = useState<OrderData>({
@@ -201,41 +201,12 @@ const App: React.FC = () => {
         </div>
         <div className="flex gap-2">
           <button onClick={() => setOrderData({...orderData, language: orderData.language === Language.EN ? Language.CN : Language.EN})} className="bg-white/10 px-3 py-1 rounded-lg text-[10px] font-bold uppercase">{orderData.language}</button>
-          <button onClick={() => setShowSettings(true)} className="bg-white text-rose-700 px-4 py-1.5 rounded-lg text-[10px] font-black uppercase shadow-md hover:bg-rose-50 transition-all">⚙️ {t('Settings', '系统设定')}</button>
+          <button onClick={() => setShowSettings(true)} className="bg-white text-rose-700 px-4 py-1.5 rounded-lg text-[10px] font-black uppercase shadow-md hover:bg-rose-50 transition-all">⚙️ {t('Admin Settings', '系统设定')}</button>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-10 grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-7 space-y-6">
-          <section className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden">
-             <div className="relative z-10">
-                <div className="flex justify-between items-center mb-6">
-                  <div>
-                    <h3 className="text-lg font-black uppercase tracking-tighter">{t('Knowledge Base', '促销情报中心')}</h3>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">{activeMemos.length} {t('Active Memos', '份生效文档')}</p>
-                  </div>
-                  <label className="bg-rose-600 px-5 py-2 rounded-full text-[10px] font-black uppercase cursor-pointer hover:bg-rose-500 transition-all">
-                    + {t('Add PDF', '上传')}
-                    <input type="file" multiple accept=".pdf" className="hidden" onChange={handleFileSelect} />
-                  </label>
-                </div>
-                {stagedMemos.length > 0 && (
-                  <button onClick={async () => { await updateMemosStateAndStorage([...activeMemos, ...stagedMemos]); setStagedMemos([]); showStatus('Database Updated'); }} className="w-full mb-4 py-4 bg-white text-rose-700 rounded-2xl text-[10px] font-black uppercase animate-bounce shadow-xl">
-                    {t('Confirm Save', '确认保存到数据库')} (+{stagedMemos.length})
-                  </button>
-                )}
-                <div className="flex flex-wrap gap-2">
-                    {activeMemos.map((m, i) => (
-                      <div key={i} className={`group px-3 py-1.5 rounded-xl flex items-center gap-2 border transition-all ${m.isSystem ? 'bg-rose-500/10 border-rose-500/30' : 'bg-white/5 border-white/10'}`}>
-                        <span className={`w-2 h-2 rounded-full ${m.isSystem ? 'bg-rose-500 animate-pulse' : 'bg-slate-500'}`}></span>
-                        <span className="text-[10px] font-bold truncate max-w-[120px]">{m.name}</span>
-                        <button onClick={() => removeMemo(i)} className="text-rose-500 opacity-0 group-hover:opacity-100 transition-all">✕</button>
-                      </div>
-                    ))}
-                </div>
-             </div>
-          </section>
-
           <section className="bg-white rounded-[3rem] p-10 shadow-sm border border-slate-200">
             <div className="flex justify-between items-center mb-10">
               <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
@@ -252,6 +223,16 @@ const App: React.FC = () => {
                 <ProductRow key={idx} product={p} catalog={catalog} onChange={(u) => {const n=[...orderData.products]; n[idx]=u; setOrderData({...orderData, products:n});}} onRemove={() => setOrderData({...orderData, products: orderData.products.filter((_,i)=>i!==idx)})} isOnlyOne={orderData.products.length===1} />
               ))}
               <button onClick={() => setOrderData({...orderData, products: [...orderData.products, {category:'', name:'', model:'', quantity:1, contract: ContractLength.MONTHS_60}]})} className="w-full py-5 border-2 border-dashed border-slate-200 rounded-[2.5rem] text-[10px] font-black uppercase text-slate-400 hover:border-rose-400 hover:text-rose-600 transition-all">+ {t('Add Bundle', '添加产品')}</button>
+            </div>
+
+            <div className="mt-8">
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">{t('Additional Context', '补充需求')}</label>
+              <textarea 
+                value={orderData.additionalContext} 
+                onChange={(e) => setOrderData({...orderData, additionalContext: e.target.value})} 
+                className="w-full h-24 bg-slate-50 border border-slate-100 rounded-3xl p-4 text-xs font-medium focus:ring-2 focus:ring-rose-500 outline-none resize-none"
+                placeholder={t('e.g. Combine with 2024 New Year Promo...', '例如：配合2024新年优惠...')}
+              />
             </div>
           </section>
 
@@ -305,39 +286,87 @@ const App: React.FC = () => {
       {showSettings && (
         <div className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-xl flex items-center justify-center p-6">
           <div className="bg-white w-full max-w-5xl h-[85vh] rounded-[4rem] shadow-2xl flex flex-col overflow-hidden border border-white/20">
-             <div className="p-10 border-b flex justify-between items-center bg-slate-50">
-                <div className="flex gap-4">
-                  <button onClick={() => setSettingsTab('catalog')} className={`px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${settingsTab==='catalog'?'bg-rose-600 text-white shadow-xl shadow-rose-200':'text-slate-400 hover:text-slate-600'}`}>{t('Catalog', '型号库')}</button>
-                  <button onClick={() => setSettingsTab('rules')} className={`px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${settingsTab==='rules'?'bg-rose-600 text-white shadow-xl shadow-rose-200':'text-slate-400 hover:text-slate-600'}`}>{t('Logic Rules', '优惠逻辑')}</button>
-                  <button onClick={() => setSettingsTab('sync')} className={`px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${settingsTab==='sync'?'bg-rose-600 text-white shadow-xl shadow-rose-200':'text-slate-400 hover:text-slate-600'}`}>{t('Admin Sync', '同步')}</button>
+             <div className="p-10 border-b flex flex-wrap gap-4 justify-between items-center bg-slate-50">
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => setSettingsTab('catalog')} className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${settingsTab==='catalog'?'bg-rose-600 text-white shadow-xl shadow-rose-200':'text-slate-400 hover:text-slate-600'}`}>{t('Catalog', '型号库')}</button>
+                  <button onClick={() => setSettingsTab('rules')} className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${settingsTab==='rules'?'bg-rose-600 text-white shadow-xl shadow-rose-200':'text-slate-400 hover:text-slate-600'}`}>{t('Logic Rules', '通用规则')}</button>
+                  <button onClick={() => setSettingsTab('memos')} className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${settingsTab==='memos'?'bg-rose-600 text-white shadow-xl shadow-rose-200':'text-slate-400 hover:text-slate-600'}`}>{t('Memos (PDF)', '促销文档')}</button>
+                  <button onClick={() => setSettingsTab('sync')} className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${settingsTab==='sync'?'bg-rose-600 text-white shadow-xl shadow-rose-200':'text-slate-400 hover:text-slate-600'}`}>{t('Sync', '数据同步')}</button>
                 </div>
-                <button onClick={() => setShowSettings(false)} className="w-12 h-12 bg-slate-200 rounded-full flex items-center justify-center hover:bg-rose-500 hover:text-white transition-all transform hover:rotate-90">✕</button>
+                <button onClick={() => setShowSettings(false)} className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center hover:bg-rose-500 hover:text-white transition-all transform hover:rotate-90">✕</button>
              </div>
              <div className="flex-1 overflow-y-auto p-12">
                 {settingsTab === 'catalog' && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {catalog.map((item, idx) => (
-                      <div key={item.id} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 group">
+                      <div key={item.id} className="p-5 bg-slate-50 rounded-3xl border border-slate-100 group">
                          <div className="flex justify-between items-start mb-2">
-                           <span className="text-[9px] font-black uppercase text-rose-600">{item.category}</span>
-                           <button onClick={() => saveCatalog(catalog.filter(c=>c.id!==item.id))} className="text-slate-300 hover:text-rose-600 transition-all">✕</button>
+                           <span className="text-[8px] font-black uppercase text-rose-600">{item.category}</span>
+                           <button onClick={() => saveCatalog(catalog.filter(c=>c.id!==item.id))} className="text-slate-300 hover:text-rose-600 transition-all text-xs">✕</button>
                          </div>
-                         <p className="text-sm font-black text-slate-800">{item.name}</p>
-                         <p className="text-[10px] text-slate-500 mt-1">{item.models.join(', ')}</p>
+                         <p className="text-xs font-black text-slate-800">{item.name}</p>
+                         <p className="text-[9px] text-slate-500 mt-1 leading-tight">{item.models.join(', ')}</p>
                       </div>
                     ))}
                   </div>
                 )}
                 {settingsTab === 'rules' && (
-                  <textarea value={masterKnowledge} onChange={(e) => saveMasterRules(e.target.value)} className="w-full h-full p-10 bg-slate-50 rounded-[3rem] text-sm font-black border-2 border-slate-100 outline-none shadow-inner" placeholder="Paste master logic here..." />
+                  <div className="h-full flex flex-col">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Master logic for the AI (Prices, Rebate Rules, etc.)</p>
+                    <textarea value={masterKnowledge} onChange={(e) => saveMasterRules(e.target.value)} className="w-full flex-1 p-8 bg-slate-50 rounded-[2.5rem] text-sm font-medium border-2 border-slate-100 outline-none shadow-inner resize-none" placeholder="Paste master logic here..." />
+                  </div>
+                )}
+                {settingsTab === 'memos' && (
+                  <div className="space-y-6">
+                    <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden">
+                       <div className="relative z-10">
+                          <div className="flex justify-between items-center mb-6">
+                            <div>
+                              <h3 className="text-lg font-black uppercase tracking-tighter">{t('Knowledge Base', '促销情报中心')}</h3>
+                              <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">{activeMemos.length} {t('Active Memos', '份生效文档')}</p>
+                            </div>
+                            <label className="bg-rose-600 px-5 py-2 rounded-full text-[10px] font-black uppercase cursor-pointer hover:bg-rose-500 transition-all">
+                              + {t('Upload PDF', '上传')}
+                              <input type="file" multiple accept=".pdf" className="hidden" onChange={handleFileSelect} />
+                            </label>
+                          </div>
+                          {stagedMemos.length > 0 && (
+                            <button onClick={async () => { await updateMemosStateAndStorage([...activeMemos, ...stagedMemos]); setStagedMemos([]); showStatus('Database Updated'); }} className="w-full mb-4 py-4 bg-white text-rose-700 rounded-2xl text-[10px] font-black uppercase animate-pulse shadow-xl">
+                              {t('Confirm & Save to DB', '确认并保存到数据库')} (+{stagedMemos.length})
+                            </button>
+                          )}
+                          <div className="flex flex-wrap gap-2">
+                              {activeMemos.map((m, i) => (
+                                <div key={i} className={`group px-3 py-1.5 rounded-xl flex items-center gap-2 border transition-all ${m.isSystem ? 'bg-rose-500/10 border-rose-500/30' : 'bg-white/5 border-white/10'}`}>
+                                  <span className={`w-2 h-2 rounded-full ${m.isSystem ? 'bg-rose-500 animate-pulse' : 'bg-slate-500'}`}></span>
+                                  <span className="text-[10px] font-bold truncate max-w-[150px]">{m.name}</span>
+                                  <button onClick={() => removeMemo(i)} className="text-rose-500 opacity-0 group-hover:opacity-100 transition-all ml-2">✕</button>
+                                </div>
+                              ))}
+                          </div>
+                       </div>
+                    </div>
+                  </div>
                 )}
                 {settingsTab === 'sync' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                    <button onClick={handleExport} className="p-12 bg-slate-900 rounded-[4rem] text-white font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-2xl">Export Config</button>
-                    <label className="p-12 bg-slate-50 rounded-[4rem] border-2 border-dashed border-slate-200 text-center font-black uppercase tracking-widest cursor-pointer hover:bg-slate-100 transition-all">
-                      Import Config
-                      <input type="file" accept=".json" className="hidden" onChange={handleImport} />
-                    </label>
+                    <div className="p-10 bg-slate-900 rounded-[4rem] text-white flex flex-col justify-between shadow-2xl">
+                      <div>
+                        <h4 className="text-xl font-black uppercase mb-2">Export Config</h4>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold">Download all models, rules and PDFs as one file.</p>
+                      </div>
+                      <button onClick={handleExport} className="mt-8 py-4 bg-rose-600 rounded-2xl font-black uppercase tracking-widest hover:bg-rose-500 transition-all">Download .JSON</button>
+                    </div>
+                    <div className="p-10 bg-slate-50 rounded-[4rem] border-2 border-dashed border-slate-200 flex flex-col justify-between">
+                      <div>
+                        <h4 className="text-xl font-black uppercase mb-2">Import Config</h4>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold">Overwrite everything with a previously exported file.</p>
+                      </div>
+                      <label className="mt-8 py-4 bg-white border border-slate-200 text-center rounded-2xl font-black uppercase tracking-widest cursor-pointer hover:bg-slate-100 transition-all">
+                        Upload File
+                        <input type="file" accept=".json" className="hidden" onChange={handleImport} />
+                      </label>
+                    </div>
                   </div>
                 )}
              </div>
