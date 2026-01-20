@@ -1,78 +1,34 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CustomerType, PlanType, ContractLength, OrderData, ProductInput, FileData, Language, ProductCategory, CatalogItem, DEFAULT_CATALOG, SystemConfig } from './types';
 import { analyzeDealStream } from './services/geminiService';
 import ProductRow from './components/ProductRow';
 
 /**
- * 核心系统默认配置 - 2026 促销规则 & 价格表全量录入
+ * 核心系统默认配置 (一进来就看到的资料)
  */
 const SYSTEM_DEFAULTS: SystemConfig = {
   catalog: DEFAULT_CATALOG,
   masterKnowledge: `
-    LG SUBSCRIBE 2026 官方促销 & 价格大师规则 (生效期: 2026年1月 - 2月):
-
-    ==================================================
-    1. 【RM88 Picks 促销】(1st Jan - 28th Feb 2026)
-    ==================================================
-    - 适用产品 & 月租:
-      * 洗衣机 (Washer): FV1450S2W, TV2517DV3B, F2520SNEKR, F2515RNTKAR -> 固定 RM88/月
-      * 烘干机 (Dryer): VDH9066WSR -> 固定 RM88/月
-      * 洗碗机 (Dishwasher): DFC335HM, DFC533FV -> 固定 RM88/月
-      * 冰箱 (Fridge): GC-J257, GC-L257, GC-B24 -> 固定 RM88/月
-      * 特殊型号: WashTower WT2520 及 冰箱 PTOX24 -> 固定 RM188/月
-    - 策略: 必须引导客户选最贵的型号，月租都是 RM88。
-
-    ==================================================
-    2. 【Ohsem CNY 88% Deals】(1st Jan - 28th Feb 2026)
-    ==================================================
-    - 优惠内容: 第 1 至 第 8 个月，月租享有 88% OFF (即只需付原价的 12%)。
-    - 取整规则: 优惠后的金额需向上取整到 Ringgit (例如 RM14.40 -> RM15.00)。
-    - 适用产品: 
-      * WP: WD516, WD518, WD210, WU525
-      * AP: Hit, Single/Double Booster, Dehumidifier, AeroCatTower
-      * Vacuum: A9X
-      * Fridge: GN-F452
-
-    ==================================================
-    3. 【Double The Ong (CNY Combo)】
-    ==================================================
-    - 条件: 订单包含至少 2 件新产品 (New Subscribe + New Subscribe)。
-    - 优惠: 两件产品每件月租额外减 RM10，直到合约结束。
-
-    ==================================================
-    4. 【Selected Washer Dryer 专项】
-    ==================================================
-    - 型号: FV1209D4W (RM75/月), FV1410H3P (RM85/月)。
-    - 期限: 仅限 5年 (5+0)。
-
-    ==================================================
-    5. 【标准产品月租价格卡 (参考)】
-    ==================================================
-    - WP (净水器): 
-      * WD516/518: RM70 (7Y), RM100 (5Y)
-      * WD210: RM60 (7Y), RM90 (5Y)
-      * WU525: RM110 (7Y), RM140 (5Y)
-      * Stand (WS410): RM110 (5Y), WS510: RM130 (5Y)
-    - AP (空净):
-      * Hit (AS60): RM50 (7Y), RM80 (5Y), AeroHit: RM45 (7Y), RM75 (5Y)
-      * Single Booster: RM75 (7Y), RM105 (5Y)
-      * Double Booster: RM105 (7Y), RM135 (5Y)
-      * AeroFurniture: RM60 (7Y), RM90 (5Y)
-      * AeroCatTower: RM70 (7Y), RM100 (5Y)
-    - Laundry (洗烘):
-      * FV1209: RM130 (5Y RV), RM120 (5Y Combine)
-      * FV1450: RM100 (5Y), WashTower (WT2520): RM290 (5Y RV), RM280 (5Y Combine)
-    - Fridge (冰箱):
-      * GN-F452: RM80 (5Y RV12M)
-      * GC-B24: RM130 (5Y), GC-X24: RM290 (5Y)
-    - 其他:
-      * Styler (衣橱): RM90 (7Y), RM110 (5Y)
-      * Microwave: RM60 (5Y SS), RM100 (3Y SS)
-      * Soundbar (S90TY): RM60 (5Y)
-      * OLED 77": RM560 (5Y), QNED 75": RM200 (5Y)
-
-    AI 指令: 如果订单在 2026年 1-2月，优先应用上述促销。如果客户没有提到促销名，你也必须自动应用最省钱的方案并告知客户。
+    LG SUBSCRIBE 销售大师核心规则 (2024/2025 最新版):
+    
+    1. 【RM88 Picks 专项策略】：
+       - 洗衣机 & 烘干机 (Washer/Dryer): 促销价统一为 RM88。必须引导客户选购目录中最昂贵、最高端的型号（如 V5 系列），因为型号越贵，客户省下的钱越多。
+       - 冰箱 (Fridge): 强烈推荐 "Regular Visit 12M" 方案，这是最平衡的维护选择。
+    
+    2. 【微波炉 (Microwave) 特殊限制】：
+       - 微波炉仅支持 5年(60个月) 和 3年(36个月) 方案。
+       - 默认必须优先推荐 5年(60个月)，月租金更低且更具竞争力。
+    
+    3. 【提前结算优惠 (Early Settlement)】：
+       - 勾选此项表示客户愿意一次性买断剩余租期。
+       - 规则：通常可基于剩余租金总额申请约 10% 的减免优惠。
+    
+    4. 【产品捆绑方案】：
+       - 组合购买（如 WP + AP）时，应计算组合月租减免（通常比单买省 RM10-15/月）。
+    
+    5. 【老顾客优惠 (Existing Customer)】：
+       - 老顾客再次下单可享受处理费减免或额外的月租扣减。
   `,
   memos: [] 
 }; 
@@ -185,7 +141,7 @@ const App: React.FC = () => {
   };
 
   const resetToSystemDefaults = () => {
-    if (window.confirm('确定要恢复到官方系统默认设置吗？这将同步代码中最新的 2026 促销策略资料。')) {
+    if (window.confirm('确定要恢复到官方系统默认设置吗？这将同步代码中最新的策略资料。')) {
       localStorage.removeItem('lg_custom_catalog');
       localStorage.removeItem('lg_master_rules');
       saveMemosToDB([]);
@@ -254,15 +210,6 @@ const App: React.FC = () => {
 
   const t = (en: string, cn: string) => (orderData.language === Language.CN ? cn : en);
   const showStatus = (msg: string) => { setStatusMsg(msg); setTimeout(() => setStatusMsg(''), 4000); };
-
-  // 使用 useCallback 稳定函数引用，防止 ProductRow 的 useEffect 造成无限循环
-  const handleProductChange = useCallback((idx: number, updated: ProductInput) => {
-    setOrderData(prev => {
-      const n = [...prev.products];
-      n[idx] = updated;
-      return { ...prev, products: n };
-    });
-  }, []);
 
   const handleAnalyze = async () => {
     if (orderData.products.some(p => !p.name)) { 
@@ -345,7 +292,11 @@ const App: React.FC = () => {
                   product={p} 
                   catalog={catalog} 
                   language={orderData.language}
-                  onChange={(u) => handleProductChange(idx, u)} 
+                  onChange={(u) => {
+                    const n=[...orderData.products]; 
+                    n[idx]=u; 
+                    setOrderData({...orderData, products:n});
+                  }} 
                   onRemove={() => setOrderData({...orderData, products: orderData.products.filter((_,i)=>i!==idx)})} 
                   isOnlyOne={orderData.products.length===1} 
                 />

@@ -2,8 +2,7 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { OrderData, FileData, Language } from "../types";
 
-// 使用 Pro 模型以应对复杂的 2026 规则库计算
-const MODEL_NAME = 'gemini-3-pro-preview';
+const MODEL_NAME = 'gemini-3-flash-preview';
 
 export const analyzeDealStream = async (
   orderData: OrderData, 
@@ -14,14 +13,14 @@ export const analyzeDealStream = async (
   const apiKey = process.env.API_KEY;
   
   if (!apiKey || apiKey === "undefined" || apiKey === "") {
-    console.error("Gemini Service: API_KEY is missing or undefined.");
+    console.error("Gemini Service: API_KEY is missing.");
     throw new Error("API_KEY_MISSING");
   }
 
   const ai = new GoogleGenAI({ apiKey });
 
   const systemInstruction = `
-    You are the "LG Subscribe Senior Pricing Actuary". Your role is to calculate the absolute lowest price and present the most strategic plan using the provided 2026 Rule Set.
+    You are the "LG Subscribe Senior Pricing Actuary". Your role is to calculate the absolute lowest price and present the most strategic plan.
 
     STRICT OUTPUT FORMAT:
     [SAVED_AMOUNT]: RM [Insert calculated total savings amount here]
@@ -33,8 +32,8 @@ export const analyzeDealStream = async (
     - Total Saving: RM [Total saved over contract period]
     
     📊 [CALCULATION BREAKDOWN]
-    1. [Item Name]: [Original Price] -> [Promo Price] (Reason: [Mention Campaign Name])
-    2. [Bundle/Combo]: [Discount value] (Reason: [Mention Double The Ong if applicable])
+    1. [Item Name]: [Original Price] -> [Promo Price] (Reason: [Mention Memo name])
+    2. [Bundle/Combo]: [Discount value] (Reason: [Mention Memo name])
     3. [Settlement]: [If YES, apply Early Settlement Discount]
     
     💡 [WHY]
@@ -46,10 +45,14 @@ export const analyzeDealStream = async (
     📢 [PITCH]
     - A 2-sentence powerful sales pitch for the customer.
 
+    CAMPAIGN RULES:
+    1. RM88 Picks Campaign:
+       - For Washer & Dryer: Remind the agent to select expensive models because promo price is flat RM88.
+       - For Refrigerators: Recommend "Regular Visit 12M".
+    
     GENERAL RULES:
     - ALWAYS start with [SAVED_AMOUNT].
-    - Apply Ohsem CNY 88% Deals (1st-8th month) and RM88 Picks correctly.
-    - For 88% Deals, round UP the monthly fee to the nearest Ringgit.
+    - NO polite filler. 
     - LANGUAGE: ${orderData.language === Language.CN ? 'Chinese' : 'English'}.
   `;
 
@@ -80,7 +83,7 @@ export const analyzeDealStream = async (
   try {
     const responseStream = await ai.models.generateContentStream({
       model: MODEL_NAME,
-      contents: { parts }, // 使用对象格式而不是数组格式，增加兼容性
+      contents: [{ parts }],
       config: { 
         systemInstruction,
         temperature: 0,
