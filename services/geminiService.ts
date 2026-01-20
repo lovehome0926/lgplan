@@ -2,8 +2,8 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { OrderData, FileData, Language } from "../types";
 
-// 使用 Pro 模型以应对复杂的 2026 规则库计算
-const MODEL_NAME = 'gemini-3-pro-preview';
+// 使用 Flash 模型，它在处理大文本 Knowledge 时响应更迅速，更不容易超时
+const MODEL_NAME = 'gemini-3-flash-preview';
 
 export const analyzeDealStream = async (
   orderData: OrderData, 
@@ -14,7 +14,7 @@ export const analyzeDealStream = async (
   const apiKey = process.env.API_KEY;
   
   if (!apiKey || apiKey === "undefined" || apiKey === "") {
-    console.error("Gemini Service: API_KEY is missing or undefined.");
+    console.error("Gemini Service: API_KEY is missing.");
     throw new Error("API_KEY_MISSING");
   }
 
@@ -60,12 +60,13 @@ export const analyzeDealStream = async (
     - Early Settlement Discount Requested: ${orderData.wantsFullSettlement ? 'YES' : 'NO'}
     - Context: ${orderData.additionalContext || 'None'}
 
-    KNOWLEDGE:
-    - Rules: ${masterKnowledge || "Standard LG pricing."}
+    KNOWLEDGE (2026 RULE SET):
+    ${masterKnowledge || "Standard LG pricing."}
   `;
 
   const parts: any[] = [{ text: prompt }];
 
+  // 仅在有实际文件且大小合理时添加
   for (const file of memoFiles) {
     if (file.base64 && file.base64.includes(',')) {
       parts.push({ 
@@ -80,23 +81,23 @@ export const analyzeDealStream = async (
   try {
     const responseStream = await ai.models.generateContentStream({
       model: MODEL_NAME,
-      contents: { parts }, // 使用对象格式而不是数组格式，增加兼容性
+      contents: [{ role: 'user', parts }],
       config: { 
         systemInstruction,
-        temperature: 0,
+        temperature: 0.1, // 略微增加稳定性
       }
     });
 
     let fullText = "";
     for await (const chunk of responseStream) {
-      const text = chunk.text;
-      if (text) {
-        fullText += text;
+      if (chunk.text) {
+        fullText += chunk.text;
         onChunk(fullText);
       }
     }
   } catch (error: any) {
-    console.error("Gemini API Error Detail:", error);
+    console.error("Gemini API Error:", error.message || error);
+    // 向用户抛出错误，触发 UI 的报错提示
     throw error;
   }
 };

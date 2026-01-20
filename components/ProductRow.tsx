@@ -1,5 +1,5 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { ProductInput, ContractLength, ProductCategory, CatalogItem, Language } from '../types';
 
 interface ProductRowProps {
@@ -39,23 +39,23 @@ const ProductRow: React.FC<ProductRowProps> = ({ product, catalog, language, onC
     }
   };
 
-  // Determine available plans
-  const supportedPlans = selectedProductInfo?.supportedPlans?.length 
-    ? [...selectedProductInfo.supportedPlans].sort((a, b) => b === ContractLength.MONTHS_60 ? 1 : -1)
-    : getAllowedPlans(product.category);
+  // 使用 useMemo 锁定选项数组引用，防止无限重渲染循环
+  const finalSupportedPlans = useMemo(() => {
+    const plans = selectedProductInfo?.supportedPlans?.length 
+      ? [...selectedProductInfo.supportedPlans].sort((a, b) => b === ContractLength.MONTHS_60 ? 1 : -1)
+      : getAllowedPlans(product.category);
 
-  // Special override for Microwave
-  const finalSupportedPlans = product.category === ProductCategory.MICROWAVE 
-    ? [ContractLength.MONTHS_60, ContractLength.MONTHS_36] 
-    : supportedPlans;
+    return product.category === ProductCategory.MICROWAVE 
+      ? [ContractLength.MONTHS_60, ContractLength.MONTHS_36] 
+      : plans;
+  }, [selectedProductInfo, product.category]);
 
-  // CRITICAL: Ensure the current selected contract is actually one of the supported plans.
-  // If not, reset it to a valid default. This prevents the "unable to change" bug.
+  // 当产品名称或类别改变，且当前合约期不再合法时，自动重置为第一个有效选项
   useEffect(() => {
     if (product.name && !finalSupportedPlans.includes(product.contract)) {
       onChange({ ...product, contract: finalSupportedPlans[0] });
     }
-  }, [product.name, product.category, finalSupportedPlans, product.contract, onChange]);
+  }, [product.name, finalSupportedPlans, onChange, product.contract]);
 
   return (
     <div className="relative p-6 bg-white rounded-3xl border-2 border-slate-100 mb-6 shadow-sm flex flex-col gap-5 transition-all active:scale-[0.99]">
